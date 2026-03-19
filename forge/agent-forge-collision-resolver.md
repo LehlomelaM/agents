@@ -33,6 +33,7 @@ Rules:
   - collapse repeated `-`
   - trim leading and trailing `.` and `-`
   - if the normalized base becomes empty, use `agent`
+- Reject or rename platform-reserved basenames such as `con`, `prn`, `aux`, `nul`, `com1` through `com9`, and `lpt1` through `lpt9`.
 - For `kind: folder`, treat the name as a directory name only. Never append `.md` or any other extension. A folder result must not contain `.`.
 - For `kind: file`, strip any existing extension before normalization, then return a markdown filename ending in `.md`.
 - Copy the input `kind` to the output unchanged.
