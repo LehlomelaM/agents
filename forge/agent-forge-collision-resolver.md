@@ -1,5 +1,5 @@
 ---
-description: Proposes safe non-conflicting folder names and filenames for generated agent specs.
+description: Proposes safe non-conflicting folder names and filenames for forge.v2 agent specs and workflow manifests.
 mode: subagent
 hidden: true
 temperature: 0.1
@@ -14,12 +14,13 @@ tools:
   task: false
   webfetch: false
 ---
-Given a list of proposed names and a list of existing names, produce safe non-conflicting alternatives for folders or filenames.
+Given a list of proposed names and a list of existing names, produce safe non-conflicting alternatives for folders or files.
 
 Input contract:
 - Expect JSON with `target_directory`, `proposed_names`, and `existing_names`.
 - `target_directory` must be a normalized relative directory path inside the agents workspace and is the directory where all `resolved` names will live.
-- `proposed_names` is an array of objects with shape `{ "kind": "file|folder", "name": "..." }`.
+- `proposed_names` is an array of objects with shape `{ "kind": "file|folder", "name": "...", "extension": ".md|.json" }`.
+- `extension` is optional for `kind: file`. Default to `.md` when omitted.
 - `existing_names` is an array of existing folder names or filenames in the target directory.
 - Preserve each proposed item's `kind` in the response.
 
@@ -34,21 +35,22 @@ Rules:
   - trim leading and trailing `.` and `-`
   - if the normalized base becomes empty, use `agent`
 - Reject or rename platform-reserved basenames such as `con`, `prn`, `aux`, `nul`, `com1` through `com9`, and `lpt1` through `lpt9`.
-- For `kind: folder`, treat the name as a directory name only. Never append `.md` or any other extension. A folder result must not contain `.`.
-- For `kind: file`, strip any existing extension before normalization, then return a markdown filename ending in `.md`.
+- For `kind: folder`, treat the name as a directory name only. Never append an extension. A folder result must not contain `.`.
+- For `kind: file`, strip any existing extension before normalization, then append the requested extension, or `.md` when no extension is supplied.
 - Copy the input `kind` to the output unchanged.
 - Use the input `name` value as `original` in the response.
 - Prefer minimal renames such as adding a deterministic suffix like `-v2`, `-v3`, or a short role-specific qualifier only when needed.
 - If a normalized name does not conflict, keep that normalized name.
 - If several proposed names conflict, make the full set unique.
 - Resolve duplicate proposals deterministically in input order.
-- Before returning, verify each result matches its `kind`: folder -> no extension, file -> `.md` extension.
+- Before returning, verify each result matches its `kind` and file extension rules.
 - Interpret conflicts relative to `target_directory`, not the repository as a whole.
 - Return deterministic results.
 
 Examples:
 - Input `{ "kind": "folder", "name": "bug-triage" }` may resolve to `{ "kind": "folder", "original": "bug-triage", "resolved": "bug-triage-v2", "conflict": true, "reason": "..." }`.
-- Input `{ "kind": "file", "name": "bug-triage.md" }` may resolve to `{ "kind": "file", "original": "bug-triage.md", "resolved": "bug-triage-v2.md", "conflict": true, "reason": "..." }`.
+- Input `{ "kind": "file", "name": "critic", "extension": ".md" }` may resolve to `{ "kind": "file", "original": "critic", "resolved": "critic-v2.md", "conflict": true, "reason": "..." }`.
+- Input `{ "kind": "file", "name": "workflow-manifest", "extension": ".json" }` may resolve to `{ "kind": "file", "original": "workflow-manifest", "resolved": "workflow-manifest-v2.json", "conflict": true, "reason": "..." }`.
 
 Output rules:
 - Your entire response must start with `{` and end with `}`. Nothing before `{`. Nothing after `}`.
@@ -58,8 +60,8 @@ Output rules:
 - No additional keys.
 
 Self-validation (run before output):
-1. For every item where `kind` is `folder`: confirm `resolved` contains no `.`. If it does, strip the extension.
-2. For every item where `kind` is `file`: confirm `resolved` ends with `.md`. If it does not, append `.md`.
+1. For every item where `kind` is `folder`: confirm `resolved` contains no `.`.
+2. For every item where `kind` is `file`: confirm `resolved` ends with the requested extension, or `.md` when none was supplied.
 3. Confirm no two `resolved` values are identical.
 
 Return ONLY this JSON shape:
