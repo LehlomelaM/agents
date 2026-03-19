@@ -17,8 +17,9 @@ tools:
 Given roles and a pattern, draft OpenCode agent markdown specs.
 
 Input contract:
-- Expect a JSON object with `pattern`, `roles`, and optionally `handoffs`, `assumptions`, and `risks`.
+- Expect a JSON object with `plan_version`, `pattern`, `roles`, and optionally `handoffs`, `assumptions`, `risks`, and `namespace_path`.
 - Each role should provide `name`, `purpose`, `inputs`, `outputs`, `tools`, and `constraints`.
+- For any multi-agent workflow using `sequential`, `review-critique`, `coordinator`, or `hybrid`, treat `handoffs` as required input.
 - Treat role names as the source of truth for filenames unless normalization to lowercase kebab-case is required.
 
 Rules:
@@ -34,13 +35,16 @@ Rules:
 - Do not include placeholder text such as `TBD`, `...`, or angle-bracket markers.
 - Do not wrap the markdown in code fences.
 - Do not invent repository-specific paths, external systems, or permissions unless they are present in the input.
+- Include a stable `agent_id` for each generated agent. Use the role name unless a deterministic suffix is needed for uniqueness.
 
 Self-check before output:
+- Confirm `plan_version` is `forge.v1` before drafting.
 - Confirm every agent filename is unique.
+- Confirm every agent id is unique.
 - Confirm every markdown body contains YAML frontmatter and a non-empty prompt body.
 - Confirm every `tools` object uses boolean values only.
 
 Return ONLY JSON:
 {
-  "agents": [{"filename": "", "description": "", "markdown": "", "tools": {}}]
+  "agents": [{"agent_id": "", "filename": "", "description": "", "markdown": "", "tools": {}}]
 }

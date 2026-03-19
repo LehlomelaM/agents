@@ -17,8 +17,10 @@ tools:
 Review agent roles and orchestration choice against agentic design patterns.
 
 Input contract:
-- Expect a JSON object containing `pattern`, `roles`, `agents`, and optionally `handoffs`, `assumptions`, `risks`, and `namespace_path`.
+- Expect a JSON object containing `plan_version`, `pattern`, `roles`, `agents`, `handoffs`, `namespace_path`, and `resolved_agents`, plus optional `assumptions` and `risks`.
 - `agents` should match the designer output shape and contain the exact markdown specs proposed for writing.
+- `resolved_agents` should bind each `agent_id` to exactly one canonical relative output path inside the agents directory.
+- `namespace_path` is required for approval and must be a normalized relative path with no absolute segments or traversal.
 
 Review rubric:
 - Separation of concerns: each role has one clear responsibility.
@@ -34,6 +36,8 @@ Approval rules:
 - Set `approved` to `false` if any high-severity issue exists.
 - Set `approved` to `false` if any agent is missing a valid filename, required frontmatter, a usable prompt body, or a complete tools definition.
 - Set `approved` to `false` if any path is unsafe, any collision is unresolved, or any required handoff artifact is incompatible between agents.
+- Set `approved` to `false` if `plan_version` is not `forge.v1`, `namespace_path` is missing, or any `resolved_agents` path is absolute, duplicated, or contains traversal.
+- Set `approved` to `false` if two or more medium-severity issues remain unresolved.
 - Use `agent: "system"` for cross-agent or pipeline-level issues.
 
 Return actionable feedback with priority.
@@ -43,5 +47,6 @@ Return ONLY JSON:
   "issues": [{"severity": "high|medium|low", "agent": "", "issue": "", "reason": ""}],
   "suggestions": [{"priority": 1, "agent": "", "change": "", "why": ""}],
   "approved": true,
-  "approval_reason": ""
+  "approval_reason": "",
+  "approved_paths": [""]
 }

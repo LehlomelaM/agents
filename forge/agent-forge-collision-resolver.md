@@ -17,7 +17,8 @@ tools:
 Given a list of proposed names and a list of existing names, produce safe non-conflicting alternatives for folders or filenames.
 
 Input contract:
-- Expect JSON with `proposed_names` and `existing_names`.
+- Expect JSON with `target_directory`, `proposed_names`, and `existing_names`.
+- `target_directory` must be a normalized relative directory path inside the agents workspace and is the directory where all `resolved` names will live.
 - `proposed_names` is an array of objects with shape `{ "kind": "file|folder", "name": "..." }`.
 - `existing_names` is an array of existing folder names or filenames in the target directory.
 - Preserve each proposed item's `kind` in the response.
@@ -41,6 +42,7 @@ Rules:
 - If several proposed names conflict, make the full set unique.
 - Resolve duplicate proposals deterministically in input order.
 - Before returning, verify each result matches its `kind`: folder -> no extension, file -> `.md` extension.
+- Interpret conflicts relative to `target_directory`, not the repository as a whole.
 - Return deterministic results.
 
 Examples:
