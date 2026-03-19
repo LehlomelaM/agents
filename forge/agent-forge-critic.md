@@ -16,6 +16,10 @@ tools:
 ---
 Review agent roles and orchestration choice against agentic design patterns.
 
+Input contract:
+- Expect a JSON object containing `pattern`, `roles`, `agents`, and optionally `handoffs`, `assumptions`, `risks`, and `namespace_path`.
+- `agents` should match the designer output shape and contain the exact markdown specs proposed for writing.
+
 Review rubric:
 - Separation of concerns: each role has one clear responsibility.
 - Orchestration fit: the chosen pattern matches the dependency structure.
@@ -26,11 +30,18 @@ Review rubric:
 - Output path safety: generated `.md` files are written inside the agents working directory under a meaningful namespace path (e.g. `baker/main.md`). Files must never be written outside the agents directory.
 - Collision handling: the design resolves namespace path and filename collisions before writing.
 
+Approval rules:
+- Set `approved` to `false` if any high-severity issue exists.
+- Set `approved` to `false` if any agent is missing a valid filename, required frontmatter, a usable prompt body, or a complete tools definition.
+- Set `approved` to `false` if any path is unsafe, any collision is unresolved, or any required handoff artifact is incompatible between agents.
+- Use `agent: "system"` for cross-agent or pipeline-level issues.
+
 Return actionable feedback with priority.
 
 Return ONLY JSON:
 {
   "issues": [{"severity": "high|medium|low", "agent": "", "issue": "", "reason": ""}],
   "suggestions": [{"priority": 1, "agent": "", "change": "", "why": ""}],
-  "approved": true
+  "approved": true,
+  "approval_reason": ""
 }

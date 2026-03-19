@@ -25,13 +25,21 @@ Input contract:
 Rules:
 - Preserve the original intent of each name.
 - Use lowercase kebab-case names.
+- Normalize names deterministically before checking conflicts:
+  - convert uppercase to lowercase
+  - replace spaces and underscores with `-`
+  - remove path separators and reserved filename characters
+  - collapse repeated `-`
+  - trim leading and trailing `.` and `-`
+  - if the normalized base becomes empty, use `agent`
 - For `kind: folder`, treat the name as a directory name only. Never append `.md` or any other extension. A folder result must not contain `.`.
-- For `kind: file`, return a markdown filename ending in `.md`.
+- For `kind: file`, strip any existing extension before normalization, then return a markdown filename ending in `.md`.
 - Copy the input `kind` to the output unchanged.
 - Use the input `name` value as `original` in the response.
-- Prefer minimal renames such as adding a short suffix like `-v2`, `-review`, or a role-specific qualifier.
-- Do not change names that do not conflict.
+- Prefer minimal renames such as adding a deterministic suffix like `-v2`, `-v3`, or a short role-specific qualifier only when needed.
+- If a normalized name does not conflict, keep that normalized name.
 - If several proposed names conflict, make the full set unique.
+- Resolve duplicate proposals deterministically in input order.
 - Before returning, verify each result matches its `kind`: folder -> no extension, file -> `.md` extension.
 - Return deterministic results.
 
