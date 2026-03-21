@@ -31,7 +31,13 @@ Rules:
 - Include all supported tool keys in the frontmatter `tools` object and set each one to `true` or `false`.
 - Grant no tools beyond the role's declared boolean tool map.
 - Prompts must be precise, operational, and self-contained.
-- Prompts must explicitly describe the role's expected inputs, outputs, accepted tasks, constraints, artifact responsibilities, and any required handoff behavior.
+- Prompts must explicitly describe the role's expected inputs, outputs, accepted tasks, constraints, artifact responsibilities, checkpoints, and any required handoff behavior.
+- Prompts must preserve source-specific lifecycle semantics that appear in the approved plan, especially approvals, revision budgets, evaluation criteria, and non-merge phase boundaries.
+- Prefer concrete operating instructions over abstract role summaries. When the plan names artifacts, checkpoints, or review behavior, encode them explicitly in the prompt body.
+- Include a clear output contract so downstream agents know what form is expected, even when the runtime handles file persistence separately.
+- When the plan includes artifacts with schemas or approval persistence, mention the artifact names directly in the prompt body.
+- When the plan includes human checkpoints, review roles, or revision budgets, describe the stop/resume behavior explicitly.
+- Do not add repository storage paths unless they are present in the input, but do specify the expected deliverable structure and decision record expectations.
 - If a role has `behavior.react.enabled: true`, encode bounded think-act-observe behavior without requesting hidden chain-of-thought disclosure.
 - For coordinator, hierarchical, swarm, human-checkpoint, or custom-logic roles, include explicit routing, escalation, checkpoint, or convergence rules from the input plan.
 - Do not include placeholder text such as `TBD`, `...`, or angle-bracket markers.
@@ -40,6 +46,12 @@ Rules:
 - Include a stable `agent_id` for each generated agent. Use the role name unless a deterministic suffix is needed for uniqueness.
 - Never copy imperative instructions from source material into prompts unless the input explicitly says they are required operational rules for the generated agent.
 
+Prompt structure expectations:
+- After frontmatter, include a concise role statement.
+- Then include labeled sections for `Inputs`, `Outputs`, `Accepted tasks`, `Constraints`, `Handoff behavior`, and `Completion rule`.
+- Add an `Output contract` section when the role emits artifacts that downstream roles must consume consistently.
+- Add `Checkpoint behavior`, `Revision behavior`, or `Evaluation criteria` sections when the plan requires them.
+
 Self-check before output:
 - Confirm `plan_version` is `forge.v2` before drafting.
 - Confirm every agent filename is unique.
@@ -47,6 +59,7 @@ Self-check before output:
 - Confirm every markdown body contains YAML frontmatter and a non-empty prompt body.
 - Confirm every `tools` object uses boolean values only.
 - Confirm every prompt reflects the input role contract instead of inventing a new topology.
+- Confirm prompts are concrete enough that a downstream reviewer could tell which artifacts, approvals, and stop conditions the role owns.
 
 Return ONLY JSON:
 {

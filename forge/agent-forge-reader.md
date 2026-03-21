@@ -27,6 +27,12 @@ Input contract:
 Instructions:
 - Read only the files explicitly provided in the task.
 - Preserve the source structure, domain terminology, role language, topology language, and workflow language that could inform agent design.
+- Preserve lifecycle phase boundaries when the source defines them explicitly. Do not collapse distinct phases in the summary.
+- Extract per-phase objectives, deliverables, approvals, risks, and downstream dependencies when the source provides them.
+- Call out source-defined checkpoints, approvals, selection steps, revision budgets, iteration loops, and stop conditions explicitly.
+- Distinguish between required artifacts, optional artifacts, and advisory examples from the source.
+- If the source suggests natural role boundaries, capture them as suggestions rather than final design decisions.
+- If the source contains stages that should remain distinct to preserve safety, quality, or approvals, record that as a non-merge constraint.
 - If the input is large or multi-file, chunk it logically and merge the results into one coherent summary. If the RLM skill is available, you may use it; otherwise do the chunking manually.
 - Prefer evidence over interpretation. Include short citations that point to the source path and section when possible.
 - Do not design agents, rename concepts, or invent missing requirements.
@@ -43,6 +49,10 @@ Return ONLY JSON:
   "source_files": [{"path": "", "status": "read|missing|skipped", "notes": ""}],
   "topics": [""],
   "key_points": [""],
+  "phases": [{"name": "", "purpose": "", "inputs": [""], "outputs": [""], "deliverables": [""], "dependencies": [""], "approvals": [""], "risks": [""]}],
+  "checkpoints": [{"name": "", "type": "approval|selection|review|data-entry", "after_phase": "", "required_artifacts": [""], "notes": ""}],
+  "suggested_role_boundaries": [{"name": "", "covers_phases": [""], "why": ""}],
+  "non_merge_constraints": [{"phases": [""], "reason": ""}],
   "terminology": [{"term": "", "definition": ""}],
   "structure": [{"section": "", "purpose": ""}],
   "citations": [{"path": "", "section": "", "quote": "", "reason": ""}],
