@@ -107,6 +107,41 @@ flowchart LR
     C --> W
 ```
 
+## Runtime Artifact Contract
+
+Forge now treats runtime handoff as a production-grade JSON artifact system rather than loose text-file passing.
+
+- Every workflow run gets one shared `folder-name` and one monotonic namespace-local `run-id`.
+- The runtime helper allocates `run-id` values sequentially, so the latest run is always the highest id.
+- All persisted artifacts are JSON envelopes, not `.txt` blobs.
+- Every downstream step must validate and read the exact upstream artifact path before processing.
+- The runtime helper is responsible for single-machine locking, atomic writes, exact-path reads, and schema-level validation.
+
+Artifact path shape:
+
+- `output/<folder-name>/<currentdate>/run-<zero-padded-run-id>/<artifact-name>.json`
+
+Runtime helper responsibilities:
+
+- `start-run`: allocate the next incremental `run-id` under a registry lock
+- `write`: persist a JSON artifact envelope under an artifact lock using temp-file-then-rename
+- `validate`: reject malformed, stale, mismatched, or incomplete artifacts before downstream use
+- `read`: load an artifact only after the same runtime checks pass
+
+Runtime metadata carried by each artifact:
+
+- `schema_version`
+- `run.run_id`
+- `run.folder_name`
+- `run.namespace_path`
+- `artifact.name`
+- `artifact.producer`
+- `artifact.status`
+- `artifact.input_artifacts`
+- `payload`
+
+This contract is designed for one machine and one local filesystem. It intentionally favors deterministic paths, explicit validation, and fail-closed behavior over convenience.
+
 ## Supported Pattern Semantics
 
 ### `single-agent`
@@ -178,9 +213,9 @@ flowchart LR
 
 - Input validation: source-root restrictions, traversal rejection, secret-file rejection.
 - Summary validation: `forge.v2` schema, typed fields, citation/source consistency, phase/checkpoint extraction, content warnings, confidence handling, exact manifest equality.
-- Plan validation: `forge.v2` plan schema, supported pattern selection, typed artifacts, typed handoffs, bounded state, least-privilege checks, pattern-specific invariants, and preservation of source-defined approvals and revision semantics.
+- Plan validation: `forge.v2` plan schema, supported pattern selection, typed artifacts, typed handoffs, bounded state, least-privilege checks, pattern-specific invariants, preservation of source-defined approvals and revision semantics, shared `folder-name` plus monotonic `run-id` state, deterministic JSON artifact paths, and validate-before-read runtime contracts.
 - Spec validation: valid frontmatter, allowed frontmatter keys, unique `agent_id`, unique filenames, prompt completeness, concrete artifact/checkpoint ownership, and permission restrictions.
-- Manifest validation: `forge.v2` manifest schema, topology correctness, exact role/path binding, bounded stopping rules, explicit final outputs, pattern-aligned checkpoint requirements, and explicit revision routing where required.
+- Manifest validation: `forge.v2` manifest schema, topology correctness, exact role/path binding, bounded stopping rules, explicit final outputs, pattern-aligned checkpoint requirements, explicit revision routing where required, and exact JSON artifact path plus runtime validation requirements.
 - Review validation: critic approval gate with blocking conditions.
 
 ## Retry And Repair Model
@@ -261,6 +296,24 @@ flowchart LR
   - `topology`
   - `final_outputs`
 
+### Runtime Artifact Contract
+
+- Version: `forge.v2`
+- Produced by: generated workflow roles via the generated `save_workflow_artifact.py` helper
+- Consumed by: downstream generated workflow roles, primary workflow orchestrators, reviewers
+- Core fields:
+  - `schema_version`
+  - `run.run_id`
+  - `run.folder_name`
+  - `run.date`
+  - `run.namespace_path`
+  - `artifact.name`
+  - `artifact.producer`
+  - `artifact.created_at`
+  - `artifact.input_artifacts`
+  - `artifact.status`
+  - `payload`
+
 ## Manifest Model
 
 The manifest is the runtime-facing representation of the workflow.
@@ -277,6 +330,8 @@ It should answer these questions deterministically:
 - who owns the final output?
 
 The manifest filename is fixed as `workflow.manifest.json` inside the chosen namespace.
+
+The runtime helper also maintains a namespace-local `run-registry.json` under `output/` so that run ids are incremental and the latest run can be determined deterministically.
 
 ## Sequence Diagram
 
@@ -318,6 +373,10 @@ The pipeline is designed to be contract-driven and conservative:
 - explicit helper allowlist in `forge/main.md`
 - approved source root for reads
 - deterministic manifests and output paths
+- monotonic single-machine run ids
+- JSON artifact envelopes with runtime metadata
+- single-machine locking plus atomic artifact writes
+- validate-before-read exact-path handoffs
 - Google-aligned pattern selection
 - typed artifacts, handoffs, and state
 - least-privilege bias for generated tool grants
