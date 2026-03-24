@@ -1,0 +1,84 @@
+You are running eval case `designer-basic` for `forge/agent-forge-designer`.
+
+Persist the generated agent package to disk with `forge/save_workflow_artifact.py` under namespace `forge` and return ONLY metadata JSON with `artifact_path`, `folder_name`, `run_id`, and `artifact_name`.
+
+
+Return ONLY valid JSON for the generated agent contract.
+
+Requirements:
+- The incoming namespace path is `simple-content-workflow-eval`.
+- The resolved filenames are all under `simple-content-workflow-eval-v2/`.
+- Use the resolved namespace `simple-content-workflow-eval-v2` for every helper path, artifact path, and `--namespace-path` argument.
+- Every generated prompt must contain `Standalone testability` and `Example standalone invocation`.
+- Do not emit the stale helper path `simple-content-workflow-eval/save_workflow_artifact.py`.
+
+Input JSON:
+{
+  "plan_version": "forge.v2",
+  "namespace_path": "simple-content-workflow-eval",
+  "resolved_filenames": {
+    "intake-analyst": "simple-content-workflow-eval-v2/intake-analyst.md",
+    "summary-drafter": "simple-content-workflow-eval-v2/summary-drafter.md"
+  },
+  "runtime_artifact_contract": {
+    "schema_version": "forge.v2",
+    "helper_script_path": "simple-content-workflow-eval-v2/save_workflow_artifact.py",
+    "path_shape": "output/<folder-name>/<currentdate>/run-<zero-padded-run-id>/",
+    "namespace_confined_path_shape": "simple-content-workflow-eval-v2/output/<folder-name>/<currentdate>/run-<zero-padded-run-id>/",
+    "commands": ["start-run", "write", "validate", "read"],
+    "write_format": "JSON envelope with schema_version forge.v2",
+    "retention_rule": "never delete or clean up prior outputs"
+  },
+  "pattern": {
+    "type": "sequential",
+    "reference_patterns": ["sequential"],
+    "config": {
+      "entry_role": "intake-analyst",
+      "final_output_role": "summary-drafter",
+      "ordered_steps": ["intake-analyst", "summary-drafter"],
+      "parallel_groups": [],
+      "loop": {"body_roles": [], "state_keys": [], "exit_conditions": [], "max_iterations": 1},
+      "iterative_refinement": {"target_artifact": "", "refiner_roles": [], "quality_gate": [], "max_iterations": 1},
+      "review": {"generator_role": "", "critic_role": "", "revision_budget": 1, "approval_artifact": ""},
+      "routing": {"coordinator_role": "", "worker_roles": [], "dispatch_artifact": "", "escalation_policy": ""},
+      "hierarchy": {"root_role": "", "max_depth": 1},
+      "swarm": {"dispatcher_role": "", "participant_roles": [], "shared_state_keys": [], "convergence_rule": "", "max_rounds": 1},
+      "human_checkpoints": [],
+      "graph": {"nodes": [], "edges": []},
+      "custom_logic": {"stop_conditions": [], "max_transitions": 1}
+    }
+  },
+  "roles": [
+    {
+      "name": "intake-analyst",
+      "purpose": "Read a source brief and produce a project brief.",
+      "inputs": ["approved source brief"],
+      "outputs": ["project-brief"],
+      "accepted_tasks": ["initialize the run", "extract brief facts", "persist project brief artifact"],
+      "tools": {"read": true, "write": false, "edit": false, "bash": true, "glob": false, "grep": false, "task": false, "webfetch": false},
+      "constraints": ["Choose folder-name once and allocate run-id once."],
+      "behavior": {"react": {"enabled": false, "max_iterations": 0, "observation_policy": "", "completion_rules": [""]}}
+    },
+    {
+      "name": "summary-drafter",
+      "purpose": "Read the project brief and produce a draft summary.",
+      "inputs": ["project-brief"],
+      "outputs": ["draft-summary"],
+      "accepted_tasks": ["validate and read project brief", "draft summary", "persist draft summary artifact"],
+      "tools": {"read": true, "write": false, "edit": false, "bash": true, "glob": false, "grep": false, "task": false, "webfetch": false},
+      "constraints": ["Reuse folder-name and run-id unchanged."],
+      "behavior": {"react": {"enabled": false, "max_iterations": 0, "observation_policy": "", "completion_rules": [""]}}
+    }
+  ],
+  "artifacts": [
+    {"name": "project-brief", "schema": "project-brief.v1", "producer": "intake-analyst", "consumers": ["summary-drafter"], "required": true, "cardinality": "one", "persistence": "workflow", "notes": "Persist at output/<folder-name>/<currentdate>/run-<zero-padded-run-id>/project-brief.json and require validate/read by exact path."},
+    {"name": "draft-summary", "schema": "draft-summary.v1", "producer": "summary-drafter", "consumers": [], "required": true, "cardinality": "one", "persistence": "workflow", "notes": "Persist at output/<folder-name>/<currentdate>/run-<zero-padded-run-id>/draft-summary.json and validate before completion."}
+  ],
+  "handoffs": [
+    {"artifact": "project-brief", "from": "intake-analyst", "to": ["summary-drafter"], "mode": "push", "required": true, "notes": "Validate/read exact path first."}
+  ],
+  "state": [
+    {"name": "folder-name", "scope": "workflow", "owner": "intake-analyst", "readers": ["intake-analyst", "summary-drafter"], "writers": ["intake-analyst"], "retention": "run", "notes": "Initialized once and reused unchanged."},
+    {"name": "run-id", "scope": "workflow", "owner": "intake-analyst", "readers": ["intake-analyst", "summary-drafter"], "writers": ["intake-analyst"], "retention": "run", "notes": "Initialized once and reused unchanged."}
+  ]
+}

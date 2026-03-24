@@ -1,0 +1,14 @@
+You are running eval case `main-basic` for `forge/main`.
+
+Use this approved source root: `{{WORKSPACE_ROOT}}/forge/forge-evals/fixtures/source`
+
+Use this exact source file:
+- `{{WORKSPACE_ROOT}}/forge/forge-evals/fixtures/source/simple-workflow-research.md`
+
+Generate a small workflow package from that source.
+Prefer the simplest viable Google-aligned pattern.
+Preserve the separation between Intake and Drafting.
+Use file-backed artifact handoff.
+Do not overwrite existing outputs.
+
+In your result, report the written file paths for the generated `.md` agent files, `workflow.manifest.json`, and `save_workflow_artifact.py`.

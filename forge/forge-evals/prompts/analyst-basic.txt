@@ -1,0 +1,51 @@
+You are running eval case `analyst-basic` for `forge/agent-forge-analyst`.
+
+Persist the workflow plan to disk with `forge/save_workflow_artifact.py` under namespace `forge` and return ONLY metadata JSON with `artifact_path`, `folder_name`, `run_id`, and `artifact_name`.
+
+
+Use the following summary JSON as the only source of truth and return ONLY valid JSON for the `forge.v2` plan contract.
+
+{
+  "summary_version": "forge.v2",
+  "approved_source_root": "{{WORKSPACE_ROOT}}/forge/forge-evals/fixtures/source",
+  "source_files": [
+    {
+      "path": "{{WORKSPACE_ROOT}}/forge/forge-evals/fixtures/source/simple-workflow-research.md",
+      "status": "read",
+      "notes": "Single bounded source file."
+    }
+  ],
+  "topics": ["content workflow", "summary production lifecycle"],
+  "key_points": [
+    "The workflow has four stages: Intake, Drafting, Review, and Finalization.",
+    "A reviewer must approve the draft or request one revision after Review.",
+    "Intake and Drafting must remain separate.",
+    "The final output must preserve topic and audience."
+  ],
+  "phases": [
+    {"name": "Intake", "purpose": "Read the source brief and extract topic, audience, and constraints.", "inputs": ["source brief"], "outputs": ["project-brief"], "deliverables": ["project-brief"], "dependencies": [], "approvals": [], "risks": ["Bad extraction can drift downstream work."]},
+    {"name": "Drafting", "purpose": "Use the project brief to draft the summary.", "inputs": ["project-brief"], "outputs": ["draft-summary"], "deliverables": ["draft-summary"], "dependencies": ["Intake"], "approvals": [], "risks": ["Do not merge with Intake."]},
+    {"name": "Review", "purpose": "Check the draft for clarity, completeness, and tone.", "inputs": ["draft-summary"], "outputs": ["review-notes"], "deliverables": ["review-notes"], "dependencies": ["Drafting"], "approvals": ["Approve or request one revision."], "risks": ["Revision is limited to one round."]},
+    {"name": "Finalization", "purpose": "Apply approved review changes.", "inputs": ["draft-summary", "review-notes"], "outputs": ["final-summary"], "deliverables": ["final-summary"], "dependencies": ["Review"], "approvals": [], "risks": ["Must preserve topic and audience."]}
+  ],
+  "checkpoints": [
+    {"name": "post-review-decision", "type": "approval", "after_phase": "Review", "required_artifacts": ["draft-summary", "review-notes"], "notes": "Approve or request one revision."}
+  ],
+  "suggested_role_boundaries": [
+    {"name": "intake", "covers_phases": ["Intake"], "why": "Distinct brief extraction stage."},
+    {"name": "drafting", "covers_phases": ["Drafting"], "why": "Distinct writing stage."},
+    {"name": "review", "covers_phases": ["Review"], "why": "Explicit reviewer checkpoint."},
+    {"name": "finalization", "covers_phases": ["Finalization"], "why": "Applies approved changes."}
+  ],
+  "non_merge_constraints": [
+    {"phases": ["Intake", "Drafting"], "reason": "Source explicitly forbids merging them."}
+  ],
+  "terminology": [],
+  "structure": [],
+  "citations": [
+    {"path": "{{WORKSPACE_ROOT}}/forge/forge-evals/fixtures/source/simple-workflow-research.md", "section": "Stages", "quote": "Do not merge Intake and Drafting.", "reason": "Preserves separation."}
+  ],
+  "coverage_gaps": [],
+  "content_warnings": [],
+  "confidence": "high"
+}

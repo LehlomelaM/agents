@@ -6,6 +6,7 @@ This helper manages:
 - atomic JSON artifact writes with per-artifact locks
 - deterministic exact-path artifact reads
 - strict runtime validation before downstream use
+- checker-attempt tracking with fail-closed workflow-error creation
 
 All writes stay inside: output/<currentdate>/<folder-name>/run-<id>/
 """
@@ -29,6 +30,8 @@ REGISTRY_FILENAME = "run-registry.json"
 LOCKS_DIRNAME = ".locks"
 RUN_STATUS_VALUES = {"active", "paused", "stopped", "complete", "failed"}
 ARTIFACT_STATUS_VALUES = {"complete", "pending", "failed", "superseded", "reused"}
+CHECKER_PRODUCER = "agent-forge-checker"
+WORKFLOW_ERROR_ARTIFACT = "workflow-error"
 
 
 def sanitize_component(value: str, *, label: str, allow_dot: bool = False) -> str:
@@ -150,7 +153,7 @@ def save_registry(output_root: Path, registry: dict[str, Any]) -> None:
 
 
 def run_dir(output_root: Path, *, folder_name: str, date_value: str, run_id: int) -> Path:
-    path = output_root / folder_name / date_value / f"run-{run_id:06d}"
+    path = output_root / date_value / folder_name / f"run-{run_id:06d}"
     ensure_relative_to(path, output_root)
     return path
 
@@ -199,7 +202,8 @@ def start_run(output_root: Path, folder_name: str) -> dict[str, Any]:
             "created_at": now,
             "updated_at": now,
             "run_path": str(run_dir(output_root, folder_name=safe_folder, date_value=date_value, run_id=next_run_id)),
-            "artifacts": {}
+            "artifacts": {},
+            "check_attempts": {}
         }
         registry["last_run_id"] = next_run_id
         registry["latest_run"] = {
@@ -224,6 +228,52 @@ def update_run_status(output_root: Path, run_id: int, status: str) -> dict[str, 
         record["updated_at"] = utc_now()
         save_registry(output_root, registry)
     return record
+
+
+def ensure_string(value: Any, *, label: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise SystemExit(f"{label} must be a non-empty string")
+    return value.strip()
+
+
+def ensure_bool(value: Any, *, label: str) -> bool:
+    if not isinstance(value, bool):
+        raise SystemExit(f"{label} must be a boolean")
+    return value
+
+
+def ensure_list(value: Any, *, label: str) -> list[Any]:
+    if not isinstance(value, list):
+        raise SystemExit(f"{label} must be a list")
+    return value
+
+
+def normalize_checked_path(raw_path: str, output_root: Path) -> Path:
+    path = Path(raw_path).expanduser().resolve()
+    ensure_relative_to(path, output_root)
+    return path
+
+
+def workflow_error_payload(
+    *,
+    failed_agent: str,
+    failed_artifact_type: str,
+    checked_artifact_path: str,
+    checker_attempts: int,
+    final_issues: list[Any],
+    checker_artifact_path: str,
+) -> dict[str, Any]:
+    return {
+        "failed_agent": failed_agent,
+        "failed_artifact_type": failed_artifact_type,
+        "checked_artifact_path": checked_artifact_path,
+        "checker_attempts": checker_attempts,
+        "approved": False,
+        "final_issues": final_issues,
+        "stop_reason": "checker rejected saved JSON artifact too many times",
+        "recommended_next_action": "Inspect the last checker artifact, repair the producer output, and restart the workflow from a clean run.",
+        "checker_artifact_path": checker_artifact_path,
+    }
 
 
 def parse_json_content(args: argparse.Namespace) -> dict[str, Any]:
@@ -422,6 +472,137 @@ def read_artifact(args: argparse.Namespace) -> dict[str, Any]:
     return document
 
 
+def record_check_result(args: argparse.Namespace) -> dict[str, Any]:
+    output_root = resolve_output_root(args.output_root)
+    run_id = coerce_int(args.run_id, label="run-id")
+    max_attempts = coerce_int(args.max_attempts, label="max-attempts") if args.max_attempts else 5
+    namespace_path = ensure_string(args.namespace_path, label="namespace-path")
+    failed_agent = ensure_string(args.failed_agent, label="failed-agent")
+    failed_artifact_type = ensure_string(args.failed_artifact_type, label="failed-artifact-type")
+
+    checked_path = normalize_checked_path(args.checked_artifact_path, output_root)
+    checker_path = normalize_checked_path(args.checker_artifact_path, output_root)
+
+    checker_document = json_load(checker_path)
+    validate_artifact_document(
+        checker_document,
+        expected_run_id=run_id,
+        expected_namespace_path=namespace_path,
+        expected_producer=CHECKER_PRODUCER,
+    )
+    checker_payload = checker_document.get("payload")
+    if not isinstance(checker_payload, dict):
+        raise SystemExit("checker payload must be an object")
+
+    payload_checked_path = normalize_checked_path(
+        ensure_string(checker_payload.get("checked_artifact_path"), label="checker payload checked_artifact_path"),
+        output_root,
+    )
+    if payload_checked_path != checked_path:
+        raise SystemExit("checker payload checked_artifact_path does not match provided checked-artifact-path")
+
+    approved = ensure_bool(checker_payload.get("approved"), label="checker payload approved")
+    final_issues = ensure_list(checker_payload.get("issues"), label="checker payload issues")
+
+    with FileLock(registry_lock_path(output_root)):
+        registry = load_registry(output_root)
+        run_record = find_run_record(registry, run_id)
+        attempts_map = run_record.setdefault("check_attempts", {})
+        path_key = str(checked_path)
+        prior = attempts_map.get(path_key, {})
+        attempt = int(prior.get("attempts", 0)) + 1
+
+        attempts_map[path_key] = {
+            "attempts": attempt,
+            "approved": approved,
+            "failed_agent": failed_agent,
+            "failed_artifact_type": failed_artifact_type,
+            "last_checker_artifact": str(checker_path),
+            "updated_at": utc_now(),
+        }
+        run_record["updated_at"] = utc_now()
+
+        if approved:
+            save_registry(output_root, registry)
+            return {
+                "run_id": run_id,
+                "checked_artifact_path": str(checked_path),
+                "checker_artifact_path": str(checker_path),
+                "attempt": attempt,
+                "approved": True,
+                "status": "approved",
+                "error_artifact_path": None,
+                "error_artifact_name": None,
+            }
+
+        if attempt < max_attempts:
+            save_registry(output_root, registry)
+            return {
+                "run_id": run_id,
+                "checked_artifact_path": str(checked_path),
+                "checker_artifact_path": str(checker_path),
+                "attempt": attempt,
+                "approved": False,
+                "status": "retry",
+                "error_artifact_path": None,
+                "error_artifact_name": None,
+            }
+
+        target_path = artifact_path(
+            output_root,
+            folder_name=run_record["folder_name"],
+            date_value=run_record["date"],
+            run_id=run_id,
+            artifact_name=WORKFLOW_ERROR_ARTIFACT,
+        )
+        lock_path = artifact_lock_path(target_path)
+        error_document = build_artifact_document(
+            namespace_path=namespace_path,
+            run_record=run_record,
+            artifact_name=WORKFLOW_ERROR_ARTIFACT,
+            producer=failed_agent,
+            payload=workflow_error_payload(
+                failed_agent=failed_agent,
+                failed_artifact_type=failed_artifact_type,
+                checked_artifact_path=str(checked_path),
+                checker_attempts=attempt,
+                final_issues=final_issues,
+                checker_artifact_path=str(checker_path),
+            ),
+            sequence=None,
+            input_artifacts=[str(checked_path), str(checker_path)],
+            status="failed",
+        )
+        with FileLock(lock_path):
+            atomic_write_json(target_path, error_document)
+        run_record.setdefault("artifacts", {})[WORKFLOW_ERROR_ARTIFACT] = {
+            "path": str(target_path),
+            "updated_at": utc_now(),
+            "producer": failed_agent,
+            "status": "failed",
+        }
+        run_record["status"] = "failed"
+        run_record["updated_at"] = utc_now()
+        registry["latest_run"] = {
+            "run_id": run_record["run_id"],
+            "folder_name": run_record["folder_name"],
+            "date": run_record["date"],
+            "run_path": run_record["run_path"],
+        }
+        save_registry(output_root, registry)
+
+    return {
+        "run_id": run_id,
+        "checked_artifact_path": str(checked_path),
+        "checker_artifact_path": str(checker_path),
+        "attempt": attempt,
+        "approved": False,
+        "status": "failed",
+        "error_artifact_path": str(target_path),
+        "error_artifact_name": WORKFLOW_ERROR_ARTIFACT,
+    }
+
+
 def latest_run(output_root: Path) -> dict[str, Any]:
     registry = load_registry(output_root)
     latest = registry.get("latest_run")
@@ -469,6 +650,15 @@ def build_parser() -> argparse.ArgumentParser:
     read.add_argument("--artifact-name")
     read.add_argument("--producer")
 
+    record_check = subparsers.add_parser("record-check")
+    record_check.add_argument("--run-id", required=True)
+    record_check.add_argument("--namespace-path", required=True)
+    record_check.add_argument("--checked-artifact-path", required=True)
+    record_check.add_argument("--checker-artifact-path", required=True)
+    record_check.add_argument("--failed-agent", required=True)
+    record_check.add_argument("--failed-artifact-type", required=True)
+    record_check.add_argument("--max-attempts")
+
     return parser
 
 
@@ -495,6 +685,8 @@ def main() -> int:
         return emit(validate_artifact(args))
     if args.command == "read":
         return emit(read_artifact(args))
+    if args.command == "record-check":
+        return emit(record_check_result(args))
     raise SystemExit(f"unsupported command: {args.command}")
 
 

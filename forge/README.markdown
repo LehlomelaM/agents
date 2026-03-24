@@ -1,28 +1,89 @@
 # Forge Pipeline
 
-`forge` is a staged agent-generation pipeline that converts bounded research inputs into two outputs:
+`forge` is a staged agent-generation pipeline that converts bounded research inputs into OpenCode agent specs and a machine-readable orchestration manifest.
 
-- OpenCode agent markdown specs
-- a machine-readable orchestration manifest at `workflow.manifest.json`
+## What Changed
 
-The current design uses `forge.v2` contracts and treats Google Cloud's agentic workflow pattern guidance as the reference model for workflow selection.
+Forge now separates orchestration from JSON checking.
 
-## Purpose
+- `forge/main.md` orchestrates only.
+- Producer subagents write their JSON artifacts to `forge/output/...` in real time.
+- The same producer subagent then calls one shared checker agent on the exact saved JSON path.
+- The checker reads the file from disk, writes its own checker result artifact, and returns metadata only.
+- After each checker result, the producer calls `python forge/save_workflow_artifact.py record-check ... --max-attempts 5`.
+- The runtime, not the prompt alone, counts checker attempts.
+- If checker approval still fails after 5 attempts, the runtime writes `workflow-error.json`, marks the run failed, and the workflow stops.
+- Final non-JSON files are expected to be reviewed later by a different final-file validator.
+- Forge does not support best-effort generation. If required information is missing or ambiguous, it must stop and ask for the missing input.
 
-- Read bounded research inputs from an approved source root.
-- Convert those inputs into a structured summary that preserves lifecycle phases, artifacts, and approvals.
-- Select the simplest viable Google-aligned workflow pattern.
-- Infer a typed workflow plan with roles, artifacts, handoffs, state, and explicit review/checkpoint semantics.
-- Draft agent specs from that plan.
-- Synthesize a workflow orchestration manifest.
-- Critique the full design before writing.
-- Resolve namespace and filename collisions safely.
+## Main Roles
 
-## Reference Model
+- `forge/main.md`: orchestrates the run, input scope, run allocation, helper sequencing, manifest synthesis, support-script synthesis, and final file writes.
+- `forge/agent-forge-reader.md`: reads approved research and writes `reader-summary.json`.
+- `forge/agent-forge-analyst.md`: converts the summary into `workflow-plan.json`.
+- `forge/agent-forge-collision-resolver.md`: resolves naming conflicts in `collision-resolution.json`.
+- `forge/agent-forge-designer.md`: writes the generated design package in `generated-agents.json`.
+- `forge/agent-forge-critic.md`: reviews the design package and writes `critic-review.json`.
+- `forge/agent-forge-checker.md`: checks saved Forge JSON artifacts on disk and writes `*-check.json` results.
 
-`forge` uses the Google Cloud design-pattern guidance as a workflow taxonomy and selection rubric.
+## JSON Check Flow
 
-Supported top-level workflow types:
+For every producer subagent output:
+
+1. Write the JSON artifact to `forge/output/...`.
+2. Validate the saved artifact with `forge/save_workflow_artifact.py`.
+3. Call `forge/agent-forge-checker` on the exact saved path.
+4. Call `python forge/save_workflow_artifact.py record-check ... --max-attempts 5` with the checked path and checker result path.
+5. If `record-check` returns `approved`, continue.
+6. If `record-check` returns `retry`, repair and repeat.
+7. If `record-check` returns `failed`, the runtime has already written `workflow-error.json` and stopped the run.
+
+`forge/main.md` does not own semantic validation anymore. It only routes based on saved checker outcomes and saved error artifacts.
+
+## No Guessing
+
+- Forge must not guess missing workflow requirements.
+- Forge must not silently continue on low-confidence or incomplete source material.
+- If required information is missing or ambiguous, Forge stops and asks for the exact missing input.
+- This applies to source files, approvals, role ownership, artifacts, checkpoints, and other workflow-shaping details.
+
+## Saved Artifact Layout
+
+Forge uses disk-backed JSON artifacts:
+
+- `output/<currentdate>/<folder-name>/run-<zero-padded-run-id>/reader-summary.json`
+- `output/<currentdate>/<folder-name>/run-<zero-padded-run-id>/workflow-plan.json`
+- `output/<currentdate>/<folder-name>/run-<zero-padded-run-id>/collision-resolution.json`
+- `output/<currentdate>/<folder-name>/run-<zero-padded-run-id>/generated-agents.json`
+- `output/<currentdate>/<folder-name>/run-<zero-padded-run-id>/critic-review.json`
+- `output/<currentdate>/<folder-name>/run-<zero-padded-run-id>/<artifact-type>-check.json`
+- `output/<currentdate>/<folder-name>/run-<zero-padded-run-id>/workflow-error.json`
+
+## Checker Scope
+
+`forge/agent-forge-checker.md` checks only saved JSON artifacts.
+
+Supported artifact types:
+
+- `reader-summary`
+- `workflow-plan`
+- `collision-resolution`
+- `generated-agents`
+- `critic-review`
+
+The checker does not validate final `.md` files or the final Python helper script.
+
+## Failure Model
+
+- Each producer subagent gets at most 5 checker invocations for one output.
+- If approval still fails after 5 tries, `record-check` writes `workflow-error.json` automatically.
+- `record-check` also marks the run failed automatically.
+- `forge/main.md` stops when it receives `artifact_name: workflow-error`.
+- Forge fails closed rather than silently continuing with an unapproved JSON artifact.
+
+## Pattern Support
+
+Forge still supports these `forge.v2` workflow types:
 
 - `single-agent`
 - `sequential`
@@ -36,392 +97,17 @@ Supported top-level workflow types:
 - `human-in-the-loop`
 - `custom-logic`
 
-Special rule:
+`ReAct` remains a role behavior overlay, not the default top-level workflow type.
 
-- `ReAct` is modeled as a role behavior overlay, not as the only top-level workflow type.
+## Runtime Helper
 
-## Pipeline Overview
+`forge/save_workflow_artifact.py` remains the canonical runtime helper for:
 
-The primary orchestrator lives in `forge/main.md` and delegates to these helpers:
+- `start-run`
+- `set-run-status`
+- `write`
+- `validate`
+- `read`
+- `record-check`
 
-- `forge/agent-forge-reader.md`
-- `forge/agent-forge-analyst.md`
-- `forge/agent-forge-designer.md`
-- `forge/agent-forge-critic.md`
-- `forge/agent-forge-collision-resolver.md`
-
-## End-To-End Process
-
-1. Validate user-supplied inputs against an approved source root.
-2. Resolve a deterministic manifest of input files.
-3. Summarize the manifest with `forge/agent-forge-reader`, preserving lifecycle phases, deliverables, and approval boundaries.
-4. Validate summary schema, semantics, confidence, manifest equality, and source-traceable phase/checkpoint extraction.
-5. Infer a `forge.v2` workflow plan with `forge/agent-forge-analyst`, preserving distinct stages when the source requires them.
-6. Validate pattern choice, typed topology, artifacts, handoffs, state, review semantics, and least privilege.
-7. Derive and normalize a namespace path.
-8. Resolve namespace and agent filename collisions.
-9. Draft agent specs with `forge/agent-forge-designer`.
-10. Run deterministic validation on generated markdown, frontmatter, filenames, permissions, and tools.
-11. Bind each generated agent to a canonical relative output path.
-12. Synthesize fixed-name `workflow.manifest.json` from the validated plan and resolved paths.
-13. Validate the orchestration manifest.
-14. Review the complete design with `forge/agent-forge-critic`.
-15. Rework once if needed, then validate again.
-16. Perform a final validation pass.
-17. Write approved files inside the agents directory only.
-
-## Flow Diagram
-
-```mermaid
-flowchart TD
-    A[User research input] --> B[Input path validation]
-    B --> C[Deterministic manifest]
-    C --> D[forge/agent-forge-reader]
-    D --> E[Summary validation]
-    E --> F[agent-forge-analyst]
-    F --> G[Pattern and topology validation]
-    G --> H[Namespace derivation]
-    H --> I[Collision resolution]
-    I --> J[agent-forge-designer]
-    J --> K[Spec runtime validation]
-    K --> L[Resolved output paths]
-    L --> M[Manifest synthesis]
-    M --> N[Manifest validation]
-    N --> O[agent-forge-critic]
-    O --> P{Approved?}
-    P -- No --> Q[Single revision pass]
-    Q --> O
-    P -- Yes --> R[Final validation]
-    R --> S[Write agent specs]
-    R --> T[Write workflow.manifest.json]
-```
-
-## Helper Responsibilities
-
-```mermaid
-flowchart LR
-    R[Reader\nSummarize source evidence] --> A[Analyst\nSelect pattern and build forge.v2 plan]
-    A --> D[Designer\nDraft agent specs from plan]
-    D --> C[Critic\nReview topology, safety, and completeness]
-    X[Collision Resolver\nNormalize namespace, spec names, manifest name] --> W[Main Orchestrator\nWrite approved outputs]
-    C --> W
-```
-
-## Runtime Artifact Contract
-
-Forge now treats runtime handoff as a production-grade JSON artifact system rather than loose text-file passing.
-
-- Every workflow run gets one shared `folder-name` and one monotonic namespace-local `run-id`.
-- The runtime helper allocates `run-id` values sequentially, so the latest run is always the highest id.
-- All persisted artifacts are JSON envelopes, not `.txt` blobs.
-- Every downstream step must validate and read the exact upstream artifact path before processing.
-- The runtime helper is responsible for single-machine locking, atomic writes, exact-path reads, and schema-level validation.
-
-Artifact path shape:
-
-- `output/<folder-name>/<currentdate>/run-<zero-padded-run-id>/<artifact-name>.json`
-
-Runtime helper responsibilities:
-
-- `start-run`: allocate the next incremental `run-id` under a registry lock
-- `write`: persist a JSON artifact envelope under an artifact lock using temp-file-then-rename
-- `validate`: reject malformed, stale, mismatched, or incomplete artifacts before downstream use
-- `read`: load an artifact only after the same runtime checks pass
-
-Runtime metadata carried by each artifact:
-
-- `schema_version`
-- `run.run_id`
-- `run.folder_name`
-- `run.namespace_path`
-- `artifact.name`
-- `artifact.producer`
-- `artifact.status`
-- `artifact.input_artifacts`
-- `payload`
-
-This contract is designed for one machine and one local filesystem. It intentionally favors deterministic paths, explicit validation, and fail-closed behavior over convenience.
-
-## Supported Pattern Semantics
-
-### `single-agent`
-
-- One agent owns the full task.
-- No unnecessary multi-agent handoffs.
-- Best for simpler workflows or strong single-role tool use.
-
-### `sequential`
-
-- Explicit ordered roles.
-- Each non-final step produces artifacts for a later step.
-- Best for fixed, linear pipelines.
-
-### `parallel`
-
-- Independent branches with explicit fan-out and fan-in.
-- Requires a join role or merge contract.
-- Best when work can happen concurrently.
-
-### `loop`
-
-- Repeated subflow with state and hard exit conditions.
-- Requires explicit `max_iterations` or equivalent bound.
-
-### `review-and-critique`
-
-- Generator role plus critic role.
-- Requires bounded revision budget and approval artifact.
-
-### `iterative-refinement`
-
-- A bounded refinement loop around a target artifact.
-- Requires measurable or operationally checkable quality gates.
-- Represented explicitly in `pattern.config.iterative_refinement`.
-
-### `coordinator`
-
-- Coordinator routes work to specialized workers.
-- Requires task envelopes, routing policy, and escalation policy.
-
-### `hierarchical-task-decomposition`
-
-- Bounded delegation tree rooted at one planner or coordinator.
-- Requires max depth and upward aggregation.
-
-### `swarm`
-
-- Bounded collaborative topology with peer-style participation.
-- Requires shared-state rules, convergence rule, max rounds, and one final answer owner.
-
-### `human-in-the-loop`
-
-- Explicit approval or data-entry checkpoints.
-- Requires resume path, timeout behavior, and approval artifact.
-
-### `custom-logic`
-
-- Explicit graph of nodes, edges, and conditions.
-- Used only when simpler patterns cannot model the workflow safely.
-- Requires explicit stop conditions and a bounded transition budget.
-
-### `ReAct` Overlay
-
-- Represented as `roles[].behavior.react`.
-- Requires bounded iterations, observation policy, and completion rules.
-
-## Validation Layers
-
-- Input validation: source-root restrictions, traversal rejection, secret-file rejection.
-- Summary validation: `forge.v2` schema, typed fields, citation/source consistency, phase/checkpoint extraction, content warnings, confidence handling, exact manifest equality.
-- Plan validation: `forge.v2` plan schema, supported pattern selection, typed artifacts, typed handoffs, bounded state, least-privilege checks, pattern-specific invariants, preservation of source-defined approvals and revision semantics, shared `folder-name` plus monotonic `run-id` state, deterministic JSON artifact paths, and validate-before-read runtime contracts.
-- Spec validation: valid frontmatter, allowed frontmatter keys, unique `agent_id`, unique filenames, prompt completeness, concrete artifact/checkpoint ownership, and permission restrictions.
-- Manifest validation: `forge.v2` manifest schema, topology correctness, exact role/path binding, bounded stopping rules, explicit final outputs, pattern-aligned checkpoint requirements, explicit revision routing where required, and exact JSON artifact path plus runtime validation requirements.
-- Review validation: critic approval gate with blocking conditions.
-
-## Retry And Repair Model
-
-- Each helper gets at most 2 repair attempts.
-- Malformed or semantically invalid helper output fails closed after the retry budget is exhausted.
-- The critic gets at most 1 redesign loop before writes are blocked.
-- The pipeline prefers a hard stop over partial output.
-
-## Shared Contracts
-
-### Summary Contract
-
-- Version: `forge.v2`
-- Produced by: `forge/agent-forge-reader`
-- Consumed by: `agent-forge-analyst`
-- Core fields:
-  - `summary_version`
-  - `approved_source_root`
-  - `source_files`
-  - `topics`
-  - `key_points`
-  - `phases`
-  - `checkpoints`
-  - `suggested_role_boundaries`
-  - `non_merge_constraints`
-  - `terminology`
-  - `structure`
-  - `citations`
-  - `coverage_gaps`
-  - `content_warnings`
-  - `confidence`
-
-### Plan Contract
-
-- Version: `forge.v2`
-- Produced by: `forge/agent-forge-analyst`
-- Consumed by: `forge/agent-forge-designer`, `forge/agent-forge-critic`, primary orchestrator
-- Core fields:
-  - `plan_version`
-  - `pattern`
-  - `roles`
-  - `artifacts`
-  - `handoffs`
-  - `state`
-  - `rationale`
-  - `risks`
-  - `assumptions`
-  - `confidence`
-
-### Generated Agent Contract
-
-- Produced by: `forge/agent-forge-designer`
-- Consumed by: `forge/agent-forge-critic`, primary orchestrator
-- Core fields:
-  - `agent_id`
-  - `filename`
-  - `description`
-  - `markdown`
-  - `tools`
-
-### Orchestration Manifest Contract
-
-- Version: `forge.v2`
-- Produced by: primary orchestrator
-- Consumed by: `agent-forge-critic`, downstream runtime or reviewers
-- Core fields:
-  - `manifest_version`
-  - `namespace_path`
-  - `reference_patterns`
-  - `pattern`
-  - `entry_role`
-  - `resolved_agents`
-  - `artifacts`
-  - `handoffs`
-  - `state`
-  - `human_checkpoints`
-  - `topology`
-  - `final_outputs`
-
-### Runtime Artifact Contract
-
-- Version: `forge.v2`
-- Produced by: generated workflow roles via the generated `save_workflow_artifact.py` helper
-- Consumed by: downstream generated workflow roles, primary workflow orchestrators, reviewers
-- Core fields:
-  - `schema_version`
-  - `run.run_id`
-  - `run.folder_name`
-  - `run.date`
-  - `run.namespace_path`
-  - `artifact.name`
-  - `artifact.producer`
-  - `artifact.created_at`
-  - `artifact.input_artifacts`
-  - `artifact.status`
-  - `payload`
-
-## Manifest Model
-
-The manifest is the runtime-facing representation of the workflow.
-
-It should answer these questions deterministically:
-
-- which pattern is in use?
-- which role starts the workflow?
-- which file implements each role?
-- which artifacts are produced and consumed?
-- which state is shared, private, or approval-bound?
-- where are the human checkpoints?
-- what are the stopping rules?
-- who owns the final output?
-
-The manifest filename is fixed as `workflow.manifest.json` inside the chosen namespace.
-
-The runtime helper also maintains a namespace-local `run-registry.json` under `output/` so that run ids are incremental and the latest run can be determined deterministically.
-
-## Sequence Diagram
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant M as Main Orchestrator
-    participant R as Reader
-    participant A as Analyst
-    participant X as Collision Resolver
-    participant D as Designer
-    participant C as Critic
-
-    U->>M: Provide research path(s)
-    M->>M: Validate source root and build manifest of inputs
-    M->>R: Summarize source manifest
-    R-->>M: Summary JSON (forge.v2)
-    M->>M: Validate summary
-    M->>A: Infer forge.v2 plan
-    A-->>M: Plan JSON (forge.v2)
-    M->>M: Validate pattern, topology, tools, and state
-    M->>X: Normalize namespace and filenames if needed
-    X-->>M: Resolved names
-    M->>D: Draft agent specs from plan
-    D-->>M: Agent spec JSON
-    M->>M: Validate specs and bind output paths
-    M->>M: Synthesize workflow.manifest.json
-    M->>M: Validate manifest
-    M->>C: Review plan, specs, and manifest
-    C-->>M: Approval decision
-    M->>M: Final validation
-    M-->>U: Write approved files and report paths
-```
-
-## Current Safety Posture
-
-The pipeline is designed to be contract-driven and conservative:
-
-- explicit helper allowlist in `forge/main.md`
-- approved source root for reads
-- deterministic manifests and output paths
-- monotonic single-machine run ids
-- JSON artifact envelopes with runtime metadata
-- single-machine locking plus atomic artifact writes
-- validate-before-read exact-path handoffs
-- Google-aligned pattern selection
-- typed artifacts, handoffs, and state
-- least-privilege bias for generated tool grants
-- review-before-write flow with critic approval
-- orchestration manifest generation for advanced workflows
-
-## Known Risks
-
-These risks are still worth tracking:
-
-1. Write-path hardening is not yet fully atomic.
-   - The specs do not explicitly require last-moment `realpath` or symlink checks immediately before file creation.
-   - Atomic create/write semantics are not described.
-
-2. Runtime support for advanced patterns may lag behind the manifest model.
-   - `forge` can describe `swarm`, `human-in-the-loop`, `hierarchical-task-decomposition`, and `custom-logic`, but an execution environment still needs to honor those semantics.
-
-3. Frontmatter allowlisting is stronger but still policy-driven.
-   - The pipeline now restricts expected metadata, but additional runtime enforcement may still be useful.
-
-4. Injection handling is improved but not fully quarantined.
-   - The pipeline treats source content as untrusted, but not every free-text field is guaranteed to be structurally sandboxed.
-
-5. Absolute capability policy is still soft.
-   - Least privilege is enforced by review and validation rules, but there is no completely separate hard deny-policy for all generated capabilities.
-
-6. Filesystem edge cases remain.
-   - Control characters, Unicode-confusable names, trailing spaces, and path length limits are not yet fully documented as blocked cases.
-
-## Recommended Next Hardening Steps
-
-- Add explicit atomic-write and pre-write symlink-check expectations.
-- Add exact allowlists for frontmatter and permission metadata in runtime validation code, not only in documentation.
-- Add a stricter deny-policy for high-risk generated permissions.
-- Extend filename/path normalization rules for control chars, confusables, and path length limits.
-- Add conformance fixtures for each supported workflow pattern.
-- Add runtime simulation or dry-run validation for manifest execution semantics.
-
-## Pattern Selection Heuristics
-
-- Prefer `single-agent` when one role can safely own the work.
-- Prefer `sequential` when the workflow has a known linear order.
-- Prefer `parallel` when branches are independent and need a merge step.
-- Prefer `review-and-critique` when a generated artifact must be validated before use.
-- Prefer `coordinator` when routing among specialized workers is dynamic.
-- Prefer `hierarchical-task-decomposition` when bounded delegation is required.
-- Prefer `human-in-the-loop` for high-stakes approvals or subjective checkpoints.
-- Use `custom-logic` only when simpler supported patterns cannot represent the workflow safely.
+Forge uses it for deterministic run ids, path-safe JSON envelopes, exact-path reads, atomic artifact writes, checker-attempt tracking, and automatic `workflow-error.json` creation on the 5th failed check.

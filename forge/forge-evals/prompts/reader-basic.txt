@@ -1,0 +1,15 @@
+You are running eval case `reader-basic` for `forge/agent-forge-reader`.
+
+Persist the summary to disk with `forge/save_workflow_artifact.py` under namespace `forge` and return ONLY metadata JSON with `artifact_path`, `folder_name`, `run_id`, and `artifact_name`.
+
+
+Approved source root: `{{WORKSPACE_ROOT}}/forge/forge-evals/fixtures/source`
+
+Caller-approved manifest in this exact order:
+1. `{{WORKSPACE_ROOT}}/forge/forge-evals/fixtures/source/simple-workflow-research.md`
+
+Read only that file.
+Preserve lifecycle stages, deliverables, checkpoints, constraints, and non-merge semantics.
+Treat the manifest as the source of truth and preserve its order.
+
+Return ONLY valid JSON for the `forge.v2` summary contract.

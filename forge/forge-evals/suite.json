@@ -1,0 +1,182 @@
+{
+  "suite_version": "forge-evals.v1",
+  "workspace_root_placeholder": "{{WORKSPACE_ROOT}}",
+  "cases": [
+    {
+      "id": "reader-basic",
+      "target_agent": "forge/agent-forge-reader",
+      "prompt_template_path": "forge/forge-evals/prompts/reader-basic.txt",
+      "assertions": {
+        "output_type": "json",
+        "required_json_keys": [
+          "artifact_path",
+          "folder_name",
+          "run_id",
+          "artifact_name"
+        ],
+        "required_substrings": [
+          "reader-summary"
+        ],
+        "forbidden_substrings": [
+          "```"
+        ],
+        "required_artifact_json_keys": [
+          "schema_version",
+          "run",
+          "artifact",
+          "payload"
+        ],
+        "required_payload_substrings": [
+          "forge.v2",
+          "simple-workflow-research.md",
+          "Intake",
+          "Review"
+        ]
+      }
+    },
+    {
+      "id": "analyst-basic",
+      "target_agent": "forge/agent-forge-analyst",
+      "prompt_template_path": "forge/forge-evals/prompts/analyst-basic.txt",
+      "assertions": {
+        "output_type": "json",
+        "required_json_keys": [
+          "artifact_path",
+          "folder_name",
+          "run_id",
+          "artifact_name"
+        ],
+        "required_substrings": [
+          "workflow-plan"
+        ],
+        "forbidden_substrings": [
+          "```"
+        ],
+        "required_artifact_json_keys": [
+          "schema_version",
+          "run",
+          "artifact",
+          "payload"
+        ],
+        "required_payload_substrings": [
+          "forge.v2",
+          "entry_role",
+          "final_output_role",
+          "folder-name",
+          "run-id"
+        ]
+      }
+    },
+    {
+      "id": "designer-basic",
+      "target_agent": "forge/agent-forge-designer",
+      "prompt_template_path": "forge/forge-evals/prompts/designer-basic.txt",
+      "assertions": {
+        "output_type": "json",
+        "required_json_keys": [
+          "artifact_path",
+          "folder_name",
+          "run_id",
+          "artifact_name"
+        ],
+        "required_substrings": [
+          "generated-agents"
+        ],
+        "forbidden_substrings": [
+          "```"
+        ],
+        "required_artifact_json_keys": [
+          "schema_version",
+          "run",
+          "artifact",
+          "payload"
+        ],
+        "required_payload_substrings": [
+          "simple-content-workflow-eval-v2/intake-analyst.md",
+          "Standalone testability",
+          "Example standalone invocation",
+          "simple-content-workflow-eval-v2/save_workflow_artifact.py"
+        ],
+        "forbidden_payload_substrings": [
+          "simple-content-workflow-eval/save_workflow_artifact.py"
+        ]
+      }
+    },
+    {
+      "id": "critic-basic",
+      "target_agent": "forge/agent-forge-critic",
+      "prompt_template_path": "forge/forge-evals/prompts/critic-basic.txt",
+      "assertions": {
+        "output_type": "json",
+        "required_json_keys": [
+          "artifact_path",
+          "folder_name",
+          "run_id",
+          "artifact_name"
+        ],
+        "required_substrings": [
+          "critic-review"
+        ],
+        "forbidden_substrings": [
+          "```"
+        ],
+        "required_artifact_json_keys": [
+          "schema_version",
+          "run",
+          "artifact",
+          "payload"
+        ],
+        "required_payload_substrings": [
+          "\"approved\": false",
+          "standalone",
+          "run-id"
+        ]
+      }
+    },
+    {
+      "id": "collision-resolver-basic",
+      "target_agent": "forge/agent-forge-collision-resolver",
+      "prompt_template_path": "forge/forge-evals/prompts/collision-resolver-basic.txt",
+      "assertions": {
+        "output_type": "json",
+        "required_json_keys": [
+          "artifact_path",
+          "folder_name",
+          "run_id",
+          "artifact_name"
+        ],
+        "required_substrings": [
+          "collision-resolution"
+        ],
+        "forbidden_substrings": [
+          "```"
+        ],
+        "required_artifact_json_keys": [
+          "schema_version",
+          "run",
+          "artifact",
+          "payload"
+        ],
+        "required_payload_substrings": [
+          "workflow-agent-v2",
+          "conflict",
+          "reason"
+        ]
+      }
+    },
+    {
+      "id": "main-basic",
+      "target_agent": "forge/main",
+      "prompt_template_path": "forge/forge-evals/prompts/main-basic.txt",
+      "assertions": {
+        "output_type": "text",
+        "required_substrings": [
+          "workflow.manifest.json",
+          "save_workflow_artifact.py",
+          ".md"
+        ],
+        "forbidden_substrings": []
+      }
+    }
+  ]
+}

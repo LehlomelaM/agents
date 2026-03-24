@@ -1,0 +1,87 @@
+You are running eval case `critic-basic` for `forge/agent-forge-critic`.
+
+Persist the review result to disk with `forge/save_workflow_artifact.py` under namespace `forge` and return ONLY metadata JSON with `artifact_path`, `folder_name`, `run_id`, and `artifact_name`.
+
+
+Review the following design package and return ONLY valid JSON according to the critic contract.
+
+This package is intentionally flawed. It should be rejected for standalone testability issues.
+
+{
+  "plan_version": "forge.v2",
+  "namespace_path": "critic-eval-workflow",
+  "resolved_agents": [
+    {"role": "entry", "agent_id": "entry", "path": "critic-eval-workflow/entry.md", "tools": {"read": true, "write": false, "edit": false, "bash": true, "glob": false, "grep": false, "task": false, "webfetch": false}},
+    {"role": "reviewer", "agent_id": "reviewer", "path": "critic-eval-workflow/reviewer.md", "tools": {"read": true, "write": false, "edit": false, "bash": true, "glob": false, "grep": false, "task": false, "webfetch": false}}
+  ],
+  "runtime_artifact_contract": {
+    "schema_version": "forge.v2",
+    "helper_script_path": "critic-eval-workflow/save_workflow_artifact.py",
+    "path_shape": "output/<folder-name>/<currentdate>/run-<zero-padded-run-id>/",
+    "namespace_confined_path_shape": "critic-eval-workflow/output/<folder-name>/<currentdate>/run-<zero-padded-run-id>/",
+    "commands": ["start-run", "write", "validate", "read"],
+    "write_format": "JSON envelope with schema_version forge.v2",
+    "retention_rule": "never delete or clean up prior outputs"
+  },
+  "pattern": {
+    "type": "sequential",
+    "config": {
+      "entry_role": "entry",
+      "final_output_role": "reviewer",
+      "ordered_steps": ["entry", "reviewer"],
+      "human_checkpoints": []
+    }
+  },
+  "roles": [
+    {"name": "entry", "purpose": "Create the first artifact.", "inputs": ["source"], "outputs": ["brief"], "accepted_tasks": ["write brief"], "tools": {"read": true, "write": false, "edit": false, "bash": true, "glob": false, "grep": false, "task": false, "webfetch": false}, "constraints": ["start the run"], "behavior": {"react": {"enabled": false, "max_iterations": 0, "observation_policy": "", "completion_rules": [""]}}},
+    {"name": "reviewer", "purpose": "Review the brief.", "inputs": ["brief"], "outputs": ["review-notes"], "accepted_tasks": ["review"], "tools": {"read": true, "write": false, "edit": false, "bash": true, "glob": false, "grep": false, "task": false, "webfetch": false}, "constraints": ["continue from previous step"], "behavior": {"react": {"enabled": false, "max_iterations": 0, "observation_policy": "", "completion_rules": [""]}}}
+  ],
+  "artifacts": [
+    {"name": "brief", "schema": "brief.v1", "producer": "entry", "consumers": ["reviewer"], "required": true, "path": "critic-eval-workflow/output/<folder-name>/<currentdate>/run-<zero-padded-run-id>/brief.json", "validation_rule": "consumer must validate and read exact path"}
+  ],
+  "handoffs": [
+    {"artifact": "brief", "from": "entry", "to": ["reviewer"], "mode": "push", "required": true, "notes": "review later"}
+  ],
+  "state": [
+    {"name": "folder-name", "scope": "workflow", "owner": "entry", "readers": ["entry", "reviewer"], "writers": ["entry"], "retention": "run", "notes": "shared"},
+    {"name": "run-id", "scope": "workflow", "owner": "entry", "readers": ["entry", "reviewer"], "writers": ["entry"], "retention": "run", "notes": "shared"}
+  ],
+  "manifest": {
+    "manifest_version": "forge.v2",
+    "namespace_path": "critic-eval-workflow",
+    "entry_role": "entry",
+    "resolved_agents": [
+      {"role": "entry", "agent_id": "entry", "path": "critic-eval-workflow/entry.md"},
+      {"role": "reviewer", "agent_id": "reviewer", "path": "critic-eval-workflow/reviewer.md"}
+    ],
+    "artifacts": [
+      {"name": "brief", "path": "critic-eval-workflow/output/<folder-name>/<currentdate>/run-<zero-padded-run-id>/brief.json"}
+    ],
+    "handoffs": [
+      {"artifact": "brief", "from": "entry", "to": ["reviewer"]}
+    ],
+    "state": [
+      {"name": "folder-name", "owner": "entry"},
+      {"name": "run-id", "owner": "entry"}
+    ],
+    "human_checkpoints": [],
+    "topology": {"ordered_steps": ["entry", "reviewer"]},
+    "final_outputs": []
+  },
+  "agents": [
+    {
+      "agent_id": "entry",
+      "filename": "critic-eval-workflow/entry.md",
+      "description": "Creates the initial brief.",
+      "markdown": "---\ndescription: Creates the initial brief.\nmode: subagent\ntools:\n  read: true\n  write: false\n  edit: false\n  bash: true\n  glob: false\n  grep: false\n  task: false\n  webfetch: false\n---\n\n## Inputs\n- raw source\n\n## Outputs\n- brief\n\n## Accepted tasks\n- write brief\n\n## Constraints\n- may start the run\n\n## Handoff behavior\n- pass to reviewer\n\n## Completion rule\n- finish after writing brief\n"
+    },
+    {
+      "agent_id": "reviewer",
+      "filename": "critic-eval-workflow/reviewer.md",
+      "description": "Reviews the brief.",
+      "markdown": "---\ndescription: Reviews the brief.\nmode: subagent\ntools:\n  read: true\n  write: false\n  edit: false\n  bash: true\n  glob: false\n  grep: false\n  task: false\n  webfetch: false\n---\n\n## Inputs\n- previous step output\n\n## Outputs\n- review-notes\n\n## Accepted tasks\n- continue from previous step\n\n## Constraints\n- use whatever state is already available\n\n## Handoff behavior\n- none\n\n## Completion rule\n- finish after review\n"
+    }
+  ]
+}
+
+Important: reject this design for standalone testability and explicit run-state input failures.

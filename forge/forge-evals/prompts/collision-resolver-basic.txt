@@ -1,0 +1,18 @@
+You are running eval case `collision-resolver-basic` for `forge/agent-forge-collision-resolver`.
+
+Persist the resolution result to disk with `forge/save_workflow_artifact.py` under namespace `forge` and return ONLY metadata JSON with `artifact_path`, `folder_name`, `run_id`, and `artifact_name`.
+
+
+Return ONLY valid JSON.
+
+{
+  "target_directory": "agents",
+  "proposed_names": [
+    {"kind": "folder", "name": "workflow-agent"},
+    {"kind": "file", "name": "critic", "extension": ".md"}
+  ],
+  "existing_names": [
+    "workflow-agent",
+    "critic.md"
+  ]
+}
